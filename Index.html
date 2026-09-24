@@ -220,11 +220,14 @@
     // Guarded: if the CDN script failed to load (blocked network, offline, bad
     // path), window.supabase won't exist. Fail loudly and visibly instead of
     // throwing here and silently killing every script after this point.
-    let supabase = null;
+    // NOTE: named sbClient (not "supabase") — the CDN library itself declares
+    // a global called `supabase`, and redeclaring that name with let/const is
+    // a SyntaxError that kills the entire script before anything runs.
+    let sbClient = null;
     let supabaseInitError = null;
     try {
       if (!window.supabase) throw new Error("Supabase library failed to load from CDN.");
-      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     } catch (e) {
       supabaseInitError = e;
     }
@@ -232,8 +235,8 @@
     // Calls a Postgres RPC function on Supabase. `params` is a named-parameter
     // object matching the function's argument names (e.g. { p_student_id: ... }).
     async function callServer(action, params) {
-      if (!supabase) throw supabaseInitError || new Error("Supabase client not initialized.");
-      const { data, error } = await supabase.rpc(action, params || {});
+      if (!sbClient) throw supabaseInitError || new Error("Supabase client not initialized.");
+      const { data, error } = await sbClient.rpc(action, params || {});
       if (error) throw error;
       return data;
     }
