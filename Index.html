@@ -553,7 +553,11 @@
       if (res.ok) {
         document.getElementById('procVideoCheck').classList.remove('hidden');
         status.className = 'cam-status-good';
-        status.innerText = "✅ Camera connected. Make sure your face is clearly visible and centered, then continue.";
+        if (res.modelFailed) {
+          status.innerText = "✅ Camera connected. (Note: the AI presence-detection model couldn't load on this device/network, but your camera feed will still be visible to your instructor.) Continue when ready.";
+        } else {
+          status.innerText = "✅ Camera connected. Make sure your face is clearly visible and centered, then continue.";
+        }
         btn.classList.add('hidden');
         document.getElementById('camContinueBtn').classList.remove('hidden');
       } else {
@@ -856,46 +860,74 @@
       const vision = await FilesetResolver.forVisionTasks(
         "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
       );
-      faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
-        baseOptions: {
-          modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/float16/1/face_landmarker.task",
-          delegate: "GPU"
-        },
+      const baseOptions = {
+        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/float16/1/face_landmarker.task"
+      };
+      const commonOptions = {
         outputFaceBlendshapes: false,
         outputFacialTransformationMatrixes: true,
         runningMode: "VIDEO",
         numFaces: 2
-      });
+      };
+      // FIX: try GPU delegate first (faster), but fall back to CPU if GPU
+      // init fails — many mobile GPUs / browsers don't support the WebGL path
+      // MediaPipe's GPU delegate needs. Previously a GPU-init failure was
+      // caught by the SAME try/catch as camera access, so it wrongly showed
+      // "Could not access the camera" even when the camera worked fine.
+      try {
+        faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
+          baseOptions: { ...baseOptions, delegate: "GPU" },
+          ...commonOptions
+        });
+      } catch (gpuErr) {
+        console.warn("GPU delegate failed, falling back to CPU:", gpuErr);
+        faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
+          baseOptions: { ...baseOptions, delegate: "CPU" },
+          ...commonOptions
+        });
+      }
       return faceLandmarker;
     }
 
     window.requestCameraAccess = async function () {
+      // FIX: camera access and face-model loading are now two separate steps
+      // with separate error handling, so a model-load failure is never
+      // mis-reported as "could not access the camera".
       try {
         camStream = await navigator.mediaDevices.getUserMedia({
           video: { width: 320, height: 240, facingMode: "user" },
           audio: false
         });
-
-        const checkVideo = document.getElementById('procVideoCheck');
-        const pipVideo = document.getElementById('procVideo');
-        if (checkVideo) { checkVideo.srcObject = camStream; try { await checkVideo.play(); } catch (e) {} }
-        if (pipVideo) { pipVideo.srcObject = camStream; try { await pipVideo.play(); } catch (e) {} }
-        procVideo = pipVideo || checkVideo;
-
-        const track = camStream.getVideoTracks()[0];
-        if (track) {
-          track.onended = () => { window.handleCameraLost && window.handleCameraLost(); };
-        }
-
-        if (!initPromise) initPromise = initFaceLandmarker();
-        await initPromise;
-        return { ok: true };
       } catch (e) {
-        console.error("Camera/FaceLandmarker init failed:", e);
+        console.error("Camera access failed:", e);
         let reason = 'other';
         if (e && (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError' || e.name === 'SecurityError')) reason = 'denied';
         else if (e && (e.name === 'NotFoundError' || e.name === 'DevicesNotFoundError' || e.name === 'OverconstrainedError')) reason = 'notfound';
         return { ok: false, reason };
+      }
+
+      const checkVideo = document.getElementById('procVideoCheck');
+      const pipVideo = document.getElementById('procVideo');
+      if (checkVideo) { checkVideo.srcObject = camStream; try { await checkVideo.play(); } catch (e) {} }
+      if (pipVideo) { pipVideo.srcObject = camStream; try { await pipVideo.play(); } catch (e) {} }
+      procVideo = pipVideo || checkVideo;
+
+      const track = camStream.getVideoTracks()[0];
+      if (track) {
+        track.onended = () => { window.handleCameraLost && window.handleCameraLost(); };
+      }
+
+      try {
+        if (!initPromise) initPromise = initFaceLandmarker();
+        await initPromise;
+        return { ok: true };
+      } catch (modelErr) {
+        console.error("Face-detection model failed to load (camera itself is fine):", modelErr);
+        // Camera is live and visible — don't block the exam over the AI model.
+        // Report success so the student can proceed; face-based violation
+        // checks just won't fire for this session, which is far better than
+        // wrongly blocking a valid camera from starting the exam at all.
+        return { ok: true, modelFailed: true };
       }
     };
 
