@@ -69,8 +69,6 @@
     .in-page-alert { background: rgba(239, 68, 68, 0.1); border: 1px solid var(--danger); padding: 15px; border-radius: 6px; color: #fff; margin-bottom: 20px; display: none; }
     .grade-badge { display: inline-block; padding: 8px 16px; border-radius: 4px; font-weight: 800; font-size: 1.2rem; margin-top: 10px; letter-spacing: 2px; }
 
-    /* Docked in the top bar (in normal document flow) instead of floating over the page,
-       so it can never sit on top of a button or option regardless of screen size. */
     .mini-cam-wrap { position: relative; width: 64px; height: 48px; flex-shrink: 0; }
     #procVideo {
       width: 64px; height: 48px; border-radius: 6px; object-fit: cover;
@@ -210,19 +208,11 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
-    // =====================================================================
-    // SUPABASE — primary backend. All student/exam data (auth, sessions,
-    // heartbeat, violations, submission, scoring, bonus codes) lives here now.
-    // =====================================================================
+
     const SUPABASE_URL = "https://rkenlpnswlwvsajeffem.supabase.co";
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJrZW5scG5zd2x3dnNhamVmZmVtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAxOTI1NTgsImV4cCI6MjEwNTc2ODU1OH0.CVjkqA49qDMTBntvejhgWK8xDuOP3ABxmfRKg3fgIIE";
 
-    // Guarded: if the CDN script failed to load (blocked network, offline, bad
-    // path), window.supabase won't exist. Fail loudly and visibly instead of
-    // throwing here and silently killing every script after this point.
-    // NOTE: named sbClient (not "supabase") — the CDN library itself declares
-    // a global called `supabase`, and redeclaring that name with let/const is
-    // a SyntaxError that kills the entire script before anything runs.
+
     let sbClient = null;
     let supabaseInitError = null;
     try {
@@ -232,8 +222,7 @@
       supabaseInitError = e;
     }
 
-    // Calls a Postgres RPC function on Supabase. `params` is a named-parameter
-    // object matching the function's argument names (e.g. { p_student_id: ... }).
+
     async function callServer(action, params) {
       if (!sbClient) throw supabaseInitError || new Error("Supabase client not initialized.");
       const { data, error } = await sbClient.rpc(action, params || {});
@@ -241,11 +230,7 @@
       return data;
     }
 
-    // =====================================================================
-    // GOOGLE APPS SCRIPT — kept ONLY for camera snapshot uploads, since those
-    // stay on Google Drive. Deploy a trimmed Code.gs exposing just
-    // logCameraSnapshot via doPost, and paste its /exec URL below.
-    // =====================================================================
+
     const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbznCY8_kFXDvQF_qOO4pdQE4zb3arFYTPW-z_20JiLYn0XC3ow6m881Z0F6TQup3i94/exec";
 
     function callAppsScript(action, params) {
@@ -265,10 +250,8 @@
     let isExamActive = false; let authWatchdog = null; let offlineLogQueue = [];
     let blurTimer; let submitAttempts = 0; const MAX_SUBMIT_ATTEMPTS = 3;
     let examCameraRequired = false;
-    let examPassingPercentage = 75; // FIX: was hardcoded at render time; now set from server response
+    let examPassingPercentage = 75; 
 
-    // Second layer of defense: even though the server already sanitizes names/IDs,
-    // escape anything we're about to drop into innerHTML on the results screen.
     function escapeHtml(str) {
       const div = document.createElement('div');
       div.innerText = (str === null || str === undefined) ? '' : String(str);
@@ -432,9 +415,7 @@
 
     function closeModal() { document.getElementById('customModal').classList.add('hidden'); }
 
-    // Some elements (like the docked camera thumbnail) live inside quizScreen and get
-    // wiped out when quizScreen's innerHTML is replaced during submission. Guard against
-    // trying to touch them again afterward.
+
     function safeHide(id) {
       const el = document.getElementById(id);
       if (el) el.classList.add('hidden');
@@ -463,15 +444,13 @@
       btn.innerText = "Connecting securely..."; btn.disabled = true; err.innerText = "";
       authWatchdog = setTimeout(() => { btn.innerText = "Authenticate & Start"; btn.disabled = false; err.style.color = "var(--danger)"; err.innerText = "No response. Check connection and retry."; }, 20000);
 
-      // Student ID only — name/section are looked up server-side from the roster,
-      // so there's nothing else to type and no email-changed lockouts.
+
       callServer('authenticate_student', { p_student_id: sId, p_user_agent: navigator.userAgent })
         .then(res => {
           clearTimeout(authWatchdog);
           if (!res.success) {
              err.style.color = "var(--danger)"; err.innerText = res.message; btn.innerText = "Authenticate & Start"; btn.disabled = false;
-             // If the server flags this as a resumable session (crash/refresh), offer a
-             // Resume button instead of a dead end.
+
              if (res.resumable) { document.getElementById('resumeBtn').classList.remove('hidden'); }
           } else {
              applyAuthResult_(res);
@@ -483,8 +462,6 @@
         });
     }
 
-    // Shared by both fresh authentication and session resume so the two paths
-    // can't drift apart.
     function applyAuthResult_(res) {
       assessmentQuestions = res.questions; secureToken = res.token;
       studentDisplayName = res.studentName || "Student";
@@ -671,7 +648,7 @@
              const input = document.createElement('input');
              input.type = inputType; input.name = 'qOpt'; input.value = trimmedOpt; input.checked = isChecked;
              const span = document.createElement('span');
-             span.innerHTML = injectAINoise(trimmedOpt); // value on the input element itself is set via DOM (see above), never string-interpolated
+             span.innerHTML = injectAINoise(trimmedOpt); 
              label.appendChild(input); label.appendChild(span);
              optionsContainer.appendChild(label);
            }
@@ -742,8 +719,7 @@
         if (timeRemaining <= 300) display.classList.add('warning');
         if (timeRemaining <= 0) {
           clearInterval(timerInterval);
-          // Stagger auto-submit at the deadline instead of every student firing
-          // submitAssessment in the exact same tick.
+
           setTimeout(submitExam, Math.floor(Math.random() * 4000));
         }
       }, 1000);
@@ -833,10 +809,6 @@
     }
   </script>
 
-  <!--
-    ===== WEBCAM PROCTORING MODULE =====
-    Unchanged: runs entirely client-side using MediaPipe Face Landmarker.
-  -->
   <script type="module">
     import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
 
@@ -869,11 +841,7 @@
         runningMode: "VIDEO",
         numFaces: 2
       };
-      // FIX: try GPU delegate first (faster), but fall back to CPU if GPU
-      // init fails — many mobile GPUs / browsers don't support the WebGL path
-      // MediaPipe's GPU delegate needs. Previously a GPU-init failure was
-      // caught by the SAME try/catch as camera access, so it wrongly showed
-      // "Could not access the camera" even when the camera worked fine.
+
       try {
         faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
           baseOptions: { ...baseOptions, delegate: "GPU" },
@@ -890,9 +858,7 @@
     }
 
     window.requestCameraAccess = async function () {
-      // FIX: camera access and face-model loading are now two separate steps
-      // with separate error handling, so a model-load failure is never
-      // mis-reported as "could not access the camera".
+
       try {
         camStream = await navigator.mediaDevices.getUserMedia({
           video: { width: 320, height: 240, facingMode: "user" },
@@ -923,10 +889,7 @@
         return { ok: true };
       } catch (modelErr) {
         console.error("Face-detection model failed to load (camera itself is fine):", modelErr);
-        // Camera is live and visible — don't block the exam over the AI model.
-        // Report success so the student can proceed; face-based violation
-        // checks just won't fire for this session, which is far better than
-        // wrongly blocking a valid camera from starting the exam at all.
+
         return { ok: true, modelFailed: true };
       }
     };
